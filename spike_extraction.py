@@ -143,7 +143,7 @@ if __name__ == '__main__':
     # write align point
     f.write(struct.pack('<H', 6)) # hax
     # write a2d conversion factor (spikes are stored as int16 for space reasons)
-    f.write(struct.pack('<ddddd', *([int_conversion] * sp.shape[1])))
+    f.write(struct.pack('<' + ('d' * sp.shape[1]), *([int_conversion] * sp.shape[1])))
     # write datetime string - well jsut write todays date since we dont know when data was recorded
     f.write(packStringBinary(str(datetime.datetime.today())))
     # write subject string
