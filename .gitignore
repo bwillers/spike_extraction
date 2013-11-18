@@ -1,0 +1,4 @@
+data/*
+foo.spike*
+.ipynb_checkpoints
+*.ipynb
