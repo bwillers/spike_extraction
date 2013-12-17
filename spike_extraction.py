@@ -39,7 +39,7 @@ def amplitudeThresholdSpikeExtraction(filtered_data, sigma_multiplier, width, pa
     # we want to pull out 1 ms waveforms, i.e. 25 samples
     long_enough = np.diff(crossings) > width
     crossings = crossings[np.array([True] + list(long_enough))]
-    crossings = crossings[(crossings >= 2 * padding) & ( crossings <  filtered_data.size - width )]
+    crossings = crossings[(crossings >= 2 * padding) & ( crossings <  filtered_data.shape[1] - width )]
     # we'll extract and extra 5 samples on each side to do the alignment
     wv = np.zeros((crossings.size, filtered_data.shape[0], width + 2 * padding))
     for i, ind in enumerate(crossings):
