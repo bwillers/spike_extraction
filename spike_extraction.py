@@ -14,6 +14,7 @@ Options:
     --threshold=<sigmamult>  Multiple of std to use as threshold [default: 5]
     --filter_low=<lowcut>    Filter range low cut (Hz) [default: 600]
     --filter_high=<highcut>  Filter range high cut (Hz) [default: 6000]
+    --invert                 Spikes are downward deflections (negate for peak).
 
 """
 
@@ -46,11 +47,23 @@ def amplitudeThresholdSpikeExtraction(filtered_data, sigma_multiplier, width, pa
         wv[i,:,:] = filtered_data[:,(ind-2*padding):(ind+width)]
     return wv, crossings
 
-def alignWaveforms(wv, pad):
+def alignWaveformsCoM(wv, pad):
     poss_shifts = np.arange(-pad, pad+1)
     p = np.sum(wv * wv, axis=1)
     p = (p.T / np.sum(p, axis=1)).T
     shifts = np.round(np.sum(p * np.arange(wv.shape[2]), axis=1)) - 3 * pad
+    shifts[shifts < -pad] = -pad
+    shifts[shifts > pad] = pad
+    sp = np.zeros((wv.shape[0], wv.shape[1], wv.shape[2] - 2 * pad))
+    for i in np.unique(shifts):
+        w = shifts == i
+        sp[w,:,:] = wv[w,:,(i + pad):(i + wv.shape[2] - pad)]
+    return sp
+
+def alignWaveformsPeak(wv, pad):
+    poss_shifts = np.arange(-pad, pad+1)
+    mu = np.mean(wv, axis=1)  # take mean across channels, left with NxL
+    shifts = np.argmax(mu[:, pad:-pad], axis=1) -pad
     shifts[shifts < -pad] = -pad
     shifts[shifts > pad] = pad
     sp = np.zeros((wv.shape[0], wv.shape[1], wv.shape[2] - 2 * pad))
@@ -69,6 +82,7 @@ if __name__ == '__main__':
     filter_low_cut = float(args['--filter_low'])
     filter_high_cut = float(args['--filter_high'])
     wv_buffer_frac = 0.2
+    inverted = args['--invert']
 
     width = int(np.ceil(wv_length * fs / 1.0e3))
     pad = int(np.ceil(wv_buffer_frac * width))
@@ -79,6 +93,7 @@ if __name__ == '__main__':
     print("\tWaveform length:", wv_length, "ms (", width, " samples )")
     print("\tThreshold:", sigma_mult, "sigma")
     print("\tFilter range:", filter_low_cut, "-", filter_high_cut, "Hz")
+    print("\tInvert:", inverted)
     print("\tInput files:", " ".join(args['<inputfiles>']))
     print("\tOutput file:", outf)
 
@@ -90,6 +105,8 @@ if __name__ == '__main__':
         print("\t",f)
         data.append(scipy.io.loadmat(f)['LFPvoltage'][0,:])
     data = np.array(data)
+    if inverted:
+        data = -data
     data_split = np.array_split(data, np.ceil(data.shape[1] / (60 * fs * segment_length)), axis=1)
 
     fn = fs / 2
@@ -114,8 +131,9 @@ if __name__ == '__main__':
     ts = ((np.concatenate(ts, axis=0) / fs) * 1e6).astype(np.uint64)
 
     print("")
-    print("Aligning on centre of mass")
-    sp = alignWaveforms(wv, pad)
+    print("Aligning on peak")
+    #sp = alignWaveforms(wv, pad)
+    sp = alignWaveformsPeak(wv, pad)
 
     int_conversion = np.max(np.abs(sp)) / (2**15 - 2)
     sp_conv = (sp / int_conversion).astype(np.int16)
