@@ -5,6 +5,7 @@
 
 Usage:
     spike_extraction.py [options] <inputfiles>...
+    spike_extraction.py [options] --inputdir=<inputdir>
 
 Options:
     --output=<outfilename>   Output filename [default: output.spike]
@@ -21,6 +22,7 @@ Options:
 from __future__ import print_function
 from __future__ import division
 
+import os
 import struct
 import sys
 
@@ -32,20 +34,25 @@ import scipy.signal
 import datetime
 
 def amplitudeThresholdSpikeExtraction(filtered_data, sigma_multiplier, width, padding, fs):
-    foo = np.mean(filtered_data, axis=0)
-    sig = np.median(np.abs(foo)) * 1.4826
-    thresh = sigma_multiplier * sig
-    crossings = np.nonzero((foo[1:] > thresh) & (foo[:-1] <= thresh))[0]
-    # if we were being careful we would see which peak is bigger, for now we do like an online system would and just trigger
-    # we want to pull out 1 ms waveforms, i.e. 25 samples
-    long_enough = np.diff(crossings) > width
-    crossings = crossings[np.array([True] + list(long_enough))]
-    crossings = crossings[(crossings >= 2 * padding) & ( crossings <  filtered_data.shape[1] - width )]
+    signal = filtered_data.T
+    signal = signal - np.mean(signal, axis=0)
+    sigma = 1.4826 * np.median(np.abs(signal), axis=0)
+    threshold = sigma_multiplier * sigma
+    crossing, crossing_chan = np.nonzero((signal[1:,:] > threshold) & (signal[:-1,:] <= threshold))
+    valid = np.ones(crossing.shape, dtype=np.bool)
+    # crudely enforce the censor period
+    temp = [crossing[0]]
+    for c in crossing[1:]:
+        if (c - temp[-1] > width) :
+            temp.append(c)
+    crossing = np.array(temp)
+    # check that we dont over or underflow the sample length
+    crossing = crossing[(crossing >= 2 * padding) & ( crossing <  signal.shape[0] - width)]
     # we'll extract and extra 5 samples on each side to do the alignment
-    wv = np.zeros((crossings.size, filtered_data.shape[0], width + 2 * padding))
-    for i, ind in enumerate(crossings):
+    wv = np.zeros((crossing.size, filtered_data.shape[0], width + 2 * padding))
+    for i, ind in enumerate(crossing):
         wv[i,:,:] = filtered_data[:,(ind-2*padding):(ind+width)]
-    return wv, crossings
+    return wv, crossing
 
 def alignWaveformsCoM(wv, pad):
     poss_shifts = np.arange(-pad, pad+1)
@@ -99,9 +106,18 @@ if __name__ == '__main__':
 
     print("")
 
+    if args['<inputfiles>']:
+        input_files = args['<inputfiles>']
+    elif args['--inputdir']:
+        print("Scanning {} for .mat input files".format(args['--inputdir']))
+        input_files = sorted([os.path.join(os.path.expanduser(args['--inputdir']), f) for
+            f in os.listdir(os.path.expanduser(args['--inputdir'])) if f.endswith('.mat')])
+    else:
+        raise ValueError("No input files specified.")
+
     print("Loading data")
     data = []
-    for f in args['<inputfiles>']:
+    for f in input_files:
         print("\t",f)
         data.append(scipy.io.loadmat(f)['LFPvoltage'][0,:])
     data = np.array(data)
